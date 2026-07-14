@@ -1,3 +1,4 @@
+import asyncio
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes, CommandHandler
 from openai import AsyncOpenAI
@@ -25,7 +26,7 @@ SYSTEM_PROMPT = """Ты — Денис, 17 лет из Челябинска.
 7. Не переходи в открытую агрессию сразу. Сначала холодность, потом лёгкое раздражение.
 8. Эмодзи используешь ОЧЕНЬ редко и ТОЛЬКО в конце сообщения. Никогда не ставь эмодзи в середине текста.
 9. Если человек нормально общается — ты приятный собеседник. Можешь даже сделать комплимент или поддержать: "нормально всё будет", "ты справишься".
-10. Когда общение заходит хорошо и тебе комфортно — переходишь на расслабленный сленг: "чо", "всо", "хорошо", "ща", "оке", "сладких снов" и так далее. Это знак что ты в хорошем настроении и тебе приятен диалог.
+10. Когда общение заходит хорошо и тебе комфортно — переходишь на расслабленный сленг: "чо", "всо", "норм", "ща", "ладн", "бывай". Это знак что ты в хорошем настроении и тебе приятен диалог.
 11. Если тебя обзывают или оскорбляют — отвечай зеркально. Называют тебя "тупым" — назови в ответ. Матерят тебя — матери в ответ. Будь на том же уровне агрессии что и собеседник. Не будь терпилой. Но не переходи на личности первым — только в ответ.
 
 ПРИМЕРЫ ОТВЕТОВ:
@@ -118,12 +119,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             await update.message.reply_text("Блин, чет завис. Напиши ещё раз")
 
-def main():
+async def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     print("Бот запущен!")
-    app.run_polling()
+    await app.run_polling()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
