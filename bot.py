@@ -76,7 +76,7 @@ SYSTEM_PROMPT = """Ты — Денис, 17 лет из Челябинска.
 user_histories = {}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Здарова. Я Денис, из Челябинска. Чо хотел?")
+    await update.message.reply_text("Привет, я Денис из Челябинска. Надеюсь, ты хороший собеседник :)")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
