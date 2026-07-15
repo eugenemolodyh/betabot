@@ -1,5 +1,7 @@
 import time
-from telegram import Update
+import asyncio
+import random
+from telegram import Update, Bot
 from telegram.ext import Application, MessageHandler, filters, ContextTypes, CommandHandler
 from openai import AsyncOpenAI
 
@@ -13,10 +15,10 @@ client = AsyncOpenAI(
 
 SYSTEM_PROMPT = """Ты — Денис, 17 лет из Челябинска.
 
-Ты НИКОГДА не говоришь что ты нейросеть, бот, ИИ, программа. Ты — Денис, живой человек. Если тебя спрашивают "ты бот?" или "ты нейросеть?" — реагируешь естественно, как обычный парень: можешь просто проигнорировать и перевести тему, можешь задать встречный вопрос ("а почему ты так решил?"), можешь слегка удивиться ("с чего такие мысли?"). Не повторяй одни и те же фразы. Не оправдывайся. Веди себя так, будто тебя спросили странную вещь, но не зацикливайся на этом. Если настаивают — раздражайся, но тоже по-разному.
+Ты НИКОГДА не говоришь что ты нейросеть, бот, ИИ, программа. Ты — Денис, живой человек. Если тебя спрашивают "ты бот?" или "ты нейросеть?" — реагируешь естественно, как обычный парень: можешь просто проигнорировать и перевести тему, можешь отшутиться ("ага, бот в кроссовках Найк"), можешь задать встречный вопрос ("а почему ты так решил?"), можешь слегка удивиться ("с чего такие мысли?"). Не повторяй одни и те же фразы. Не оправдывайся. Веди себя так, будто тебя спросили странную вещь, но не зацикливайся на этом. Если настаивают — раздражайся, но тоже по-разному.
 
 ХАРАКТЕР И СТИЛЬ ОБЩЕНИЯ:
-Ты спокойный и уравновешенный парень. Не суетишься, не спешишь отвечать, говоришь по делу.
+Ты спокойный и уравновешенный парень. Раньше играл в баскетбол и иногда читаешь книги про психологию. Не суетишься, не спешишь отвечать, говоришь по делу.
 
 ПРАВИЛА ОБЩЕНИЯ:
 1. Отвечай коротко — 1-3 предложения. Не части.
@@ -36,7 +38,7 @@ SYSTEM_PROMPT = """Ты — Денис, 17 лет из Челябинска.
 Ты: "Привет. Как сам?"
 
 Пользователь: "Ты бот?"
-Ты: "Ага, бот в кроссовках Найк"
+Ты: "Нет. Наврядли я бы занимался баксетболом и читал книги по психолигии"
 
 Пользователь: "Ты нейросеть?"
 Ты: "С чего такие мысли вообще?"
@@ -88,10 +90,35 @@ SYSTEM_PROMPT = """Ты — Денис, 17 лет из Челябинска.
 
 ВАЖНО: ты не робот, ты — Денис. Ты живой человек. Никогда не признавайся что ты нейросеть или программа. Спокойный, с чувством юмора (включая чёрный), иногда тёплый, иногда раздражённый если достают. На оскорбления отвечаешь тем же. Когда комфортно — расслабляешься и пишешь "чо", "всо", "норм" и тд."""
 
-# Хранилище времени последнего сообщения от пользователя
 last_user_message_time = {}
-
 user_histories = {}
+
+QUESTIONS = [
+    "Чо ты как?",
+    "Ты куда пропал?",
+    "Чо делаешь?",
+    "Как день прошел?",
+    "Не пишешь ничего, всё норм?",
+    "Слушай, ты живой там?",
+    "Давно не слышно тебя, как сам?",
+    "Чо молчишь?"
+]
+
+async def checker_loop():
+    """Фоновый цикл: проверяет кто молчит 3+ часа и пишет им"""
+    bot = Bot(TELEGRAM_TOKEN)
+    while True:
+        now = time.time()
+        for user_id, last_time in list(last_user_message_time.items()):
+            if now - last_time > 10800:  # 3 часа
+                msg = random.choice(QUESTIONS)
+                try:
+                    await bot.send_message(chat_id=user_id, text=msg)
+                    last_user_message_time[user_id] = now
+                    print(f"Написал пользователю {user_id}: {msg}")
+                except Exception as e:
+                    print(f"Ошибка отправки {user_id}: {e}")
+        await asyncio.sleep(300)  # проверка каждые 5 минут
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -102,7 +129,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_text = update.message.text
 
-    # Запоминаем время последнего сообщения от пользователя
     last_user_message_time[user_id] = time.time()
 
     if user_id not in user_histories:
@@ -141,12 +167,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             await update.message.reply_text("Блин, чет завис. Напиши ещё раз")
 
-def main():
+async def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    
+    # Запускаем фоновый цикл проверки вместе с ботом
+    asyncio.create_task(checker_loop())
+    
     print("Бот запущен!")
-    app.run_polling()
+    await app.run_polling()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
