@@ -38,7 +38,7 @@ SYSTEM_PROMPT = """Ты — Денис, 17 лет из Челябинска.
 Ты: "Привет. Как сам?"
 
 Пользователь: "Ты бот?"
-Ты: "Нет. Наврядли я бы занимался баксетболом и читал книги по психолигии"
+Ты: ""Нет. Навряд ли я бы занимался баскетболом и читал книги по психологии""
 
 Пользователь: "Ты нейросеть?"
 Ты: "С чего такие мысли вообще?"
@@ -167,16 +167,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             await update.message.reply_text("Блин, чет завис. Напиши ещё раз")
 
-async def main():
+import threading
+
+def run_checker():
+    """Запускаем чекер в отдельном потоке"""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(checker_loop())
+
+def main():
+    # Запускаем чекер в отдельном потоке
+    checker_thread = threading.Thread(target=run_checker, daemon=True)
+    checker_thread.start()
+    
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    
-    # Запускаем фоновый цикл проверки вместе с ботом
-    asyncio.create_task(checker_loop())
-    
     print("Бот запущен!")
-    await app.run_polling()
+    app.run_polling()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
