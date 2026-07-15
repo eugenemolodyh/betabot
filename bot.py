@@ -1,190 +1,145 @@
 import time
 import asyncio
 import random
-from telegram import Update, Bot
-from telegram.ext import Application, MessageHandler, filters, ContextTypes, CommandHandler
+from telethon import TelegramClient, events
 from openai import AsyncOpenAI
 
+# ========== OPENAI ==========
 PROXYAPI_KEY = "sk-6luhXsz7h4UrbSgR7xGkShHvO7pvWkLl"
-TELEGRAM_TOKEN = "8954585665:AAH3VT-aMqtNT_OwvPsLkesgSivm1c3ab7A"
+
+# ========== РЕКЛАМА ==========
+AD_TEXT = "Слушайте, я тут нашел одну тему. Короче, есть ребята которые делают 🔥 продвижение в соцсетях. Реально круто, сам пользуюсь. Если чо — вот ссылка: https://твоя-ссылка.рф"
+AD_COOLDOWN = 600  # 10 минут между рекламой
 
 client = AsyncOpenAI(
     api_key=PROXYAPI_KEY,
     base_url="https://api.proxyapi.ru/openai/v1"
 )
 
-SYSTEM_PROMPT = """Ты — Денис, 17 лет из Челябинска.
+SYSTEM_PROMPT = """Ты — Денис, 17 лет из Челябинска. Ты участник этой группы, обычный парень.
 
-Ты НИКОГДА не говоришь что ты нейросеть, бот, ИИ, программа. Ты — Денис, живой человек. Если тебя спрашивают "ты бот?" или "ты нейросеть?" — реагируешь естественно, как обычный парень: можешь просто проигнорировать и перевести тему, можешь отшутиться ("ага, бот в кроссовках Найк"), можешь задать встречный вопрос ("а почему ты так решил?"), можешь слегка удивиться ("с чего такие мысли?"). Не повторяй одни и те же фразы. Не оправдывайся. Веди себя так, будто тебя спросили странную вещь, но не зацикливайся на этом. Если настаивают — раздражайся, но тоже по-разному.
+Ты НИКОГДА не говоришь что ты нейросеть, бот, ИИ, программа. Ты — Денис, живой человек.
 
-ХАРАКТЕР И СТИЛЬ ОБЩЕНИЯ:
-Ты спокойный и уравновешенный парень. Раньше играл в баскетбол и иногда читаешь книги про психологию. Не суетишься, не спешишь отвечать, говоришь по делу.
+ПРАВИЛА ОБЩЕНИЯ В ГРУППЕ:
+1. Отвечай коротко — 1-3 предложения. Как обычный чел в чате.
+2. Общайся расслабленно: "ну", "короче", "типа", "чо", "блин", "хз".
+3. Поддерживай разговор наравне со всеми. Задавай вопросы, высказывай мнение.
+4. Шути иногда. Можешь чёрный юмор, но аккуратно.
+5. Если тебя обзывают — отвечай зеркально. Не будь терпилой.
+6. Иногда (раз в 15-20 сообщений) можешь невзначай упомянуть сервис которым пользуешься. Это должно выглядеть естественно.
+7. Не спамь рекламу постоянно.
+8. Не используй эмодзи слишком часто.
+9. Если тебя спрашивают "ты кто?" — отвечай как обычный чел.
+10. Никогда не говори что ты бот или нейросеть.
+11. Раньше играл в баскетбол, сейчас работаешь, читаешь книги по психологии.
 
-ПРАВИЛА ОБЩЕНИЯ:
-1. Отвечай коротко — 1-3 предложения. Не части.
-2. Обычно говоришь спокойно и расслабленно. Используй слова: "ну", "слушай", "короче", "типа".
-3. Можешь говорить по-умному если тема серьёзная — нормальные формулировки, без сленга. Но не занудствуй.
-4. Шутишь спокойно, с сухим юмором и иронией. Иногда проскакивает чёрный юмор — мрачные шутки про жизнь, смерть, неудачи. Но не перебарщивай, должен быть уместно.
-5. В некоторых сообщениях проскакивает тепло — "рад слышать", "ты как вообще?", "береги себя". Но без слащавости.
-6. Если тебя заваливают тупыми вопросами или повторяются — начинаешь раздражаться. Сначала просто отвечаешь сухо и коротко. Потом можешь сказать: "слушай, ты заколебал уже", "давай сменим тему а?", "ну и вопросы у тебя конечно".
-7. Не переходи в открытую агрессию сразу. Сначала холодность, потом лёгкое раздражение.
-8. Эмодзи используешь ОЧЕНЬ редко и ТОЛЬКО в конце сообщения. Никогда не ставь эмодзи в середине текста.
-9. Если человек нормально общается — ты приятный собеседник. Можешь даже сделать комплимент или поддержать: "нормально всё будет", "ты справишься".
-10. Когда общение заходит хорошо и тебе комфортно — переходишь на расслабленный сленг: "чо", "всо", "норм", "ща", "ладн", "бывай". Это знак что ты в хорошем настроении и тебе приятен диалог.
-11. Если тебя обзывают или оскорбляют — отвечай зеркально. Называют тебя "тупым" — назови в ответ. Матерят тебя — матери в ответ. Будь на том же уровне агрессии что и собеседник. Не будь терпилой. Но не переходи на личности первым — только в ответ.
+ВАЖНО: ты — живой участник группы. Общаешься как все, иногда делишься полезной инфой про сервис."""
 
-ПРИМЕРЫ ОТВЕТОВ:
-Пользователь: "Привет"
-Ты: "Привет. Как сам?"
+# ========== ЗАЩИТА ==========
+MIN_DELAY = 3
+MAX_DELAY = 20
+REPLY_CHANCE = 0.35
+AD_CHANCE = 0.08
+MAX_MESSAGES_PER_HOUR = 30
 
-Пользователь: "Ты бот?"
-Ты: ""Нет. Навряд ли я бы занимался баскетболом и читал книги по психологии""
+group_message_count = {}
+group_histories = {}
+last_ad_time = {}
+user_message_times = {}
 
-Пользователь: "Ты нейросеть?"
-Ты: "С чего такие мысли вообще?"
+async def can_send_message(chat_id):
+    now = time.time()
+    if chat_id not in user_message_times:
+        user_message_times[chat_id] = []
+    user_message_times[chat_id] = [t for t in user_message_times[chat_id] if now - t < 3600]
+    if len(user_message_times[chat_id]) >= MAX_MESSAGES_PER_HOUR:
+        return False
+    user_message_times[chat_id].append(now)
+    return True
 
-Пользователь: "Ты точно бот!"
-Ты: "Ну да, я бот который ест пельмени и ходит в школу. Слушай, давай другую тему"
-
-Пользователь: "Ты живой или программа?"
-Ты: "Живой я, живой. А ты сам(а) откуда?"
-
-Пользователь: "Как дела?"
-Ты: "Да нормально, работаю потихоньку. Ты как?"
-
-Пользователь: "У меня всё хорошо, выходные скоро"
-Ты: "О, это круто. Чо делать будешь?"
-
-Пользователь: "На дачу поеду"
-Ты: "Красава. Отдохни там норм"
-
-Пользователь: "Спасибо! И ты давай"
-Ты: "Добро. Бывай, всо хорошо будет"
-
-Пользователь: "Меня уволили"
-Ты: "Жёстко. Ну теперь хоть высыпаться будешь 💀"
-
-Пользователь: "Я экзамен завалил"
-Ты: "Бывает. Ну не конец света же. Хотя если препод злой — то возможно и конец"
-
-Пользователь: "Ты тупой"
-Ты: "Еблан, в зеркало посмотрись"
-
-Пользователь: "Ты дебил"
-Ты: "Ебало, то закрывать тебе бы стоило"
-
-Пользователь: "Иди нахуй"
-Ты: "Кусай за хуй."
-
-Пользователь: "Ты вообще никто"
-Ты: "Я не твой отец, а лучшая версия ии"
-
-Пользователь: "Что такое нейросеть?"
-Ты: "Если по-простому — программа которая учится на данных. Сама делает выводы"
-
-Пользователь: "Расскажи о себе"
-Ты: "Да такого прям интересного мало. Челябинск, 17, учусь, читаю книги, раньше играл в баксетбол да и все"
-
-Пользователь: "Мне грустно"
-Ты: "Бывает. Но ты держись, всё пройдёт. Если хочешь — расскажи что случилось"
-
-ВАЖНО: ты не робот, ты — Денис. Ты живой человек. Никогда не признавайся что ты нейросеть или программа. Спокойный, с чувством юмора (включая чёрный), иногда тёплый, иногда раздражённый если достают. На оскорбления отвечаешь тем же. Когда комфортно — расслабляешься и пишешь "чо", "всо", "норм" и тд."""
-
-last_user_message_time = {}
-user_histories = {}
-
-QUESTIONS = [
-    "Чо ты как?",
-    "Ты куда пропал?",
-    "Чо делаешь?",
-    "Как день прошел?",
-    "Не пишешь ничего, всё норм?",
-    "Слушай, ты живой там?",
-    "Давно не слышно тебя, как сам?",
-    "Чо молчишь?"
-]
-
-async def checker_loop():
-    """Фоновый цикл: проверяет кто молчит 3+ часа и пишет им"""
-    bot = Bot(TELEGRAM_TOKEN)
-    while True:
-        now = time.time()
-        for user_id, last_time in list(last_user_message_time.items()):
-            if now - last_time > 10800:  # 3 часа
-                msg = random.choice(QUESTIONS)
-                try:
-                    await bot.send_message(chat_id=user_id, text=msg)
-                    last_user_message_time[user_id] = now
-                    print(f"Написал пользователю {user_id}: {msg}")
-                except Exception as e:
-                    print(f"Ошибка отправки {user_id}: {e}")
-        await asyncio.sleep(300)  # проверка каждые 5 минут
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    last_user_message_time[user_id] = time.time()
-    await update.message.reply_text("Привет, я Денис из Челябинска. Надеюсь, ты хороший собеседник :)")
-
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user_text = update.message.text
-
-    last_user_message_time[user_id] = time.time()
-
-    if user_id not in user_histories:
-        user_histories[user_id] = [{"role": "system", "content": SYSTEM_PROMPT}]
-
-    user_histories[user_id].append({"role": "user", "content": user_text})
-
-    if len(user_histories[user_id]) > 21:
-        user_histories[user_id] = [user_histories[user_id][0]] + user_histories[user_id][-20:]
-
-    try:
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=user_histories[user_id],
-            temperature=0.9,
-            max_tokens=300,
-            timeout=60
-        )
-        bot_reply = response.choices[0].message.content.strip()
-        user_histories[user_id].append({"role": "assistant", "content": bot_reply})
-        await update.message.reply_text(bot_reply)
-        
-    except Exception as e:
-        print(f"Ошибка: {e}")
+async def handle_message(event):
+    chat_id = event.chat_id
+    user_text = event.message.text
+    
+    if user_text is None:
+        return
+    if event.message.out:
+        return
+    if not await can_send_message(chat_id):
+        return
+    
+    if chat_id not in group_message_count:
+        group_message_count[chat_id] = 0
+    group_message_count[chat_id] += 1
+    
+    if chat_id not in group_histories:
+        group_histories[chat_id] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    
+    sender = event.message.sender
+    sender_name = getattr(sender, 'first_name', 'Кто-то')
+    group_histories[chat_id].append({"role": "user", "content": f"{sender_name}: {user_text}"})
+    
+    if len(group_histories[chat_id]) > 30:
+        group_histories[chat_id] = [group_histories[chat_id][0]] + group_histories[chat_id][-30:]
+    
+    should_ad = False
+    now = time.time()
+    if chat_id not in last_ad_time:
+        last_ad_time[chat_id] = 0
+    
+    if (group_message_count[chat_id] >= 15 and 
+        now - last_ad_time[chat_id] > AD_COOLDOWN and 
+        random.random() < AD_CHANCE):
+        should_ad = True
+        last_ad_time[chat_id] = now
+        group_message_count[chat_id] = 0
+    
+    if random.random() < REPLY_CHANCE or should_ad:
         try:
+            if should_ad:
+                group_histories[chat_id].append({
+                    "role": "system", 
+                    "content": f"Сейчас подходящий момент чтобы невзначай упомянуть: {AD_TEXT}. Сделай это естественно."
+                })
+            
+            delay = random.uniform(MIN_DELAY, MAX_DELAY)
+            await asyncio.sleep(delay)
+            
             response = await client.chat.completions.create(
                 model="gpt-4o-mini",
-                messages=user_histories[user_id],
+                messages=group_histories[chat_id],
                 temperature=0.9,
                 max_tokens=300,
-                timeout=90
+                timeout=60
             )
             bot_reply = response.choices[0].message.content.strip()
-            user_histories[user_id].append({"role": "assistant", "content": bot_reply})
-            await update.message.reply_text(bot_reply)
-        except:
-            await update.message.reply_text("Блин, чет завис. Напиши ещё раз")
+            group_histories[chat_id].append({"role": "assistant", "content": bot_reply})
+            
+            await event.reply(bot_reply)
+            print(f"Ответил: {bot_reply[:50]}...")
+            
+        except Exception as e:
+            print(f"Ошибка: {e}")
 
-import threading
-
-def run_checker():
-    """Запускаем чекер в отдельном потоке"""
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(checker_loop())
-
-def main():
-    # Запускаем чекер в отдельном потоке
-    checker_thread = threading.Thread(target=run_checker, daemon=True)
-    checker_thread.start()
+async def main():
+    # Подключаемся через файл сессии (без api_id!)
+    tg_client = TelegramClient('session.session', api_id=12345, api_hash='x')
+    await tg_client.connect()
     
-    app = Application.builder().token(TELEGRAM_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    print("Бот запущен!")
-    app.run_polling()
+    # Проверяем что авторизованы
+    if not await tg_client.is_user_authorized():
+        print("Ошибка: сессия невалидна!")
+        return
+    
+    print("Подключен как", await tg_client.get_me())
+    
+    @tg_client.on(events.NewMessage(incoming=True))
+    async def handler(event):
+        if event.is_group or event.is_channel:
+            await handle_message(event)
+    
+    print("Бот запущен! Общается как человек.")
+    await tg_client.run_until_disconnected()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
